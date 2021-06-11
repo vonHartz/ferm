@@ -5,9 +5,9 @@ import torch.nn.functional as F
 import copy
 import math
 
-import utils
-from encoder import make_encoder
-import data_augs as rad
+import ferm.utils as utils
+from ferm.encoder import make_encoder
+import ferm.data_augs as rad
 
 LOG_FREQ = 10000
 
