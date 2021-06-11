@@ -1,4 +1,4 @@
-python train.py --domain_name FetchPickAndPlace-v1 \
+xvfb-run --auto-servernum --server-num=1 -e /dev/stdout python train.py --domain_name FetchPickAndPlace-v1 \
   --reward_type sparse --cameras 8 10 --frame_stack 1 --num_updates 1 \
   --observation_type pixel --encoder_type pixel --work_dir ./data/FetchPickAndPlace-v1 \
   --pre_transform_image_size 100 --image_size 84 --agent rad_sac \
