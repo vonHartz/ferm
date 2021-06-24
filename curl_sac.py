@@ -592,3 +592,8 @@ class RadSacAgent(CurlSacAgent):
 
         self.update_sac(L, step, obs, action, reward, next_obs, not_done, log_networks)
         # doesn't update cpc
+
+    def update_cpc_only(self, replay_buffer, L, step, ema=False, translate=False):
+        obs, action, reward, next_obs, not_done, cpc_kwargs = replay_buffer.sample_cpc_flex_aug(self.augs_funcs)
+        obs_anchor, obs_pos = cpc_kwargs["obs_anchor"], cpc_kwargs["obs_pos"]
+        self.update_cpc(obs_anchor, obs_pos, cpc_kwargs, L, step, ema=ema)

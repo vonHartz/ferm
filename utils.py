@@ -145,15 +145,20 @@ class ReplayBuffer(Dataset):
         next_obses = self.next_obses[idxs]
         pos = obses.copy()
 
-        if translate:
-            from data_augs import random_translate
-            obses = random_translate(obses)
-            next_obses = random_translate(next_obses)
-            pos = random_translate(pos)
-        else:
-            obses = random_crop(obses, self.image_size)
-            next_obses = random_crop(next_obses, self.image_size)
-            pos = random_crop(pos, self.image_size)
+        img_size = obses.shape[-1]
+        if img_size > self.image_size:  # don't need to downsample otherwise
+            if translate:
+                from data_augs import random_translate
+                obses = random_translate(obses)
+                next_obses = random_translate(next_obses)
+                pos = random_translate(pos)
+            else:
+                obses = random_crop(obses, self.image_size)
+                next_obses = random_crop(next_obses, self.image_size)
+                pos = random_crop(pos, self.image_size)
+
+            # TODO(jan); there's just two modes here as this function is used
+            # for the cpc pretraining.
 
         obses = torch.as_tensor(obses, device=self.device).float()
         next_obses = torch.as_tensor(next_obses, device=self.device).float()
@@ -164,6 +169,66 @@ class ReplayBuffer(Dataset):
         pos = torch.as_tensor(pos, device=self.device).float()
         cpc_kwargs = dict(obs_anchor=obses, obs_pos=pos,
                           time_anchor=None, time_pos=None)
+
+        if self.hybrid_states is not None:
+            hybrid_obses = torch.as_tensor(self.hybrid_states[idxs], device=self.device).float()
+            next_hybrid_obses = torch.as_tensor(self.next_hybrid_states[idxs], device=self.device).float()
+            obses = [obses, hybrid_obses]
+            next_obses = [next_obses, next_hybrid_obses]
+
+        return obses, actions, rewards, next_obses, not_dones, cpc_kwargs
+
+    def sample_cpc_flex_aug(self, aug_funcs):
+        # augs specified as flags
+        # curl_sac organizes flags into aug funcs
+        # passes aug funcs into sampler
+
+        idxs = np.random.randint(
+            0, self.capacity if self.full else self.idx, size=self.batch_size
+        )
+
+        obses = self.obses[idxs]
+        next_obses = self.next_obses[idxs]
+        pos = obses.copy()
+
+        if aug_funcs:
+            for aug, func in aug_funcs.items():
+                # apply crop and cutout first
+                if 'crop' in aug or 'cutout' in aug:
+                    obses = func(obses)
+                    next_obses = func(next_obses)
+                    pos = func(pos)
+
+                if 'translate' in aug:
+                    obses, tw, th = func(obses)
+                    next_obses, _, _ = func(next_obses, tw, th)
+                    pos = func(pos)
+
+        obses = torch.as_tensor(obses, device=self.device).float()
+        next_obses = torch.as_tensor(next_obses, device=self.device).float()
+        actions = torch.as_tensor(self.actions[idxs], device=self.device)
+        rewards = torch.as_tensor(self.rewards[idxs], device=self.device)
+        not_dones = torch.as_tensor(self.not_dones[idxs], device=self.device)
+
+        pos = torch.as_tensor(pos, device=self.device).float()
+
+        cpc_kwargs = dict(obs_anchor=obses, obs_pos=pos,
+                          time_anchor=None, time_pos=None)
+
+        # TODO(jan): don't have these norms in cpc-style aug. want them here?
+        obses = obses / 255.
+        next_obses = next_obses / 255.
+        pos = pos / 255.
+
+        # augmentations go here
+        if aug_funcs:
+            for aug, func in aug_funcs.items():
+                # skip crop and cutout augs
+                if 'crop' in aug or 'cutout' in aug or 'translate' in aug:
+                    continue
+                obses = func(obses)
+                next_obses = func(next_obses)
+                pos = func(pos)
 
         if self.hybrid_states is not None:
             hybrid_obses = torch.as_tensor(self.hybrid_states[idxs], device=self.device).float()
@@ -213,6 +278,9 @@ class ReplayBuffer(Dataset):
                     continue
                 obses = func(obses)
                 next_obses = func(next_obses)
+
+        # TODO(jan): if we want a center crop in case of no rand-crop/translate
+        # we would need to add it here
 
         if self.hybrid_states is not None:
             hybrid_obses = torch.as_tensor(self.hybrid_states[idxs], device=self.device).float()
@@ -351,6 +419,7 @@ def random_crop(imgs, output_size):
     img_size = imgs.shape[-1]
     crop_max = img_size - output_size
     imgs = np.transpose(imgs, (0, 2, 3, 1))
+
     w1 = np.random.randint(0, crop_max, n)
     h1 = np.random.randint(0, crop_max, n)
     # creates all sliding windows combinations of size (output_size)
