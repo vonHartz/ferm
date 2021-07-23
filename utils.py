@@ -202,7 +202,7 @@ class ReplayBuffer(Dataset):
                 if 'translate' in aug:
                     obses, tw, th = func(obses)
                     next_obses, _, _ = func(next_obses, tw, th)
-                    pos = func(pos)
+                    pos, _, _ = func(pos)
 
         obses = torch.as_tensor(obses, device=self.device).float()
         next_obses = torch.as_tensor(next_obses, device=self.device).float()
